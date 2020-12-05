@@ -8,6 +8,7 @@ from dash.dependencies import Input, Output
 
 import pandas as pd
 import web_core
+from database import *
 from preprocessing import *
 from language_processing import *
 import xgboost as xgb
@@ -27,8 +28,25 @@ external_stylesheets = ['https://unpkg.com/wingcss']
 app = dash.Dash(__name__, external_stylesheets=external_stylesheets, suppress_callback_exceptions=True)
 
 
-# Load Cleaned Dataframe:
-df1 = pd.read_json('https://raw.githubusercontent.com/YueWangpl/DATA1050_movie_rating_prediction_proj/main/pop_movies.json')
+# Load Dataframe from DB:
+df1 = fetch_all_movies_as_df(allow_cached=False)
+# Clean:
+# rename columns
+df1.columns=['id','title','year','content_rating','length','genres','score','metascore',
+            'vote_numbers','gross','director','actors','genre']
+
+# drop columns
+df1.drop(['genres','metascore','actors'], axis=1, inplace=True)
+
+# Drop duplicated movies
+df1.title.drop_duplicates(inplace=True)
+# Drop movies with any NaN
+df1.replace('', np.nan, inplace=True)
+df1.dropna(axis=0,how='any', inplace=True)
+# Convert data types
+df1 = df1.convert_dtypes()
+df1 = df1.astype({'length': 'int64','gross': 'float','score': 'float','year':'int32'})
+
 df2 = df1[~(df1['year'] < 2015)]
 
 
@@ -40,6 +58,7 @@ app.layout = html.Div([
 
 # PROJECT MAIN PAGE: NEED ADDING CONTRIBUTIONS, FUNCTION SPECIFICATIONS, DETAIL SAMPLES etc...
 index_page = html.Div([
+    html.Header(html.Div(dcc.Link(html.Button('About this Project', style={'background-color': '#ADD8E6'}), href='/about'), style={'text-align': 'right'})),
 
     html.H1("Movies", style={'text-align': 'center'}),
     html.Div([
@@ -66,9 +85,9 @@ index_page = html.Div([
     dcc.Graph(id='movie_scatter', figure={})],style={'width': '75%', 'display': 'inline-block'}),
     html.Div( #smaller now moved up beside the first block
     [
-        html.I("Search a movie to view its score trend, and try our prediction model!"),
+        html.I("To search a movie to view its score trend, and try our prediction model,"),
         html.Br(),
-        dcc.Link(html.Button('Search'), href='/search', style={'textAlign': 'center'}),
+        dcc.Link(html.Button('Click Here'), href='/search', style={'textAlign': 'center'}),
         html.Br()],
         style={'width': '20%', 'display': 'inline-block', 'margin':'auto','textAlign': 'center'}),
 
@@ -76,7 +95,7 @@ index_page = html.Div([
 
     html.Div([
         dcc.Markdown('''
-        This table shows 9502 trending movies from all genre.
+        This table shows trending movies from all genre.
         
         Use the filter box in each column to filter data.
         
@@ -205,11 +224,10 @@ def update_graph(option_slctd):
 # Search Page
 page_1_layout = html.Div([
     html.H1('Search For a Movie', style={'text-align': 'center'}),
-    html.Div(dcc.Input(id='input-on-submit', type='text', placeholder="Type a movie title here...")),
+    html.Div(dcc.Input(id='input-on-submit', type='text', placeholder="Type a movie title here..."), style={'width': "50%","margin":"auto",'text-align': 'center'}),
+    html.Br(),
     html.Button('Search!', id='submit-val', n_clicks=0),
     dcc.Loading(id="loading", type="default",children="try", color='#708090'),
-#     html.Div(id='container-button-basic',
-#              children='Enter a value and press submit'),
     html.Div(id='search-content'),
     html.Br(),
     dcc.Link('HOME', href='/')
@@ -283,7 +301,52 @@ def update_review(n_clicks, value):
             score = model_collect['model'].predict(xgb.DMatrix(np.reshape(te_vec, (1, -1))))
             return "The input review is: {}. \n The predicted score for this movie is {}.".format(value, score)
 
+page_2_layout = html.Div([
+    html.Div([
+    html.H1('About'),
+    dcc.Markdown('''
+        ### Project & Executive Summary 
+        We developed a modern web application on displaying and visualizing recent trending movies, where users can write their own comments on a particular movie and our online-trained machine learning model will return a predicted score of the reviews. The trending movie data is recaptured and renewed in the database every week.
+        
+        #### Names of all team members 
+        > Bangxi Xiao  
+        > Yue Wang  
+        > Yuyang Li
+        
+        #### Possible next steps
+        The search algorithm is relatively slow currently and there might be other ways to boost the efficiency of the searching process.
+        Due to the time efficiency consideration, we failed to use deep learning models to predict the rating score of the reviews, possible steps for next may include developing a baseline model for all predictions to globally adjust the predicted score from the online-trained model.
+        #### References
+        * Used resources:  
+        [IMDB](http://imdb.com/)  
+        [Plotly Dash](https://dash.plotly.com/)
+        * Other related work:  
+        [Green, S. (2019). Sentiment Analysis — A how-to guide with movie reviews](https://towardsdatascience.com/sentiment-analysis-a-how-to-guide-with-movie-reviews-9ae335e6bcb2)   
+        [Panchal, K. (2018). Exploring Movie Data with Interactive Visualizations](https://towardsdatascience.com/exploring-movie-data-with-interactive-visualizations-c22e8ce5f663) 
+        
+        ### Project Details
+        #### Datasets used
+        The datasets we used are captured from imdb.com: the popular movie data includes the weekly-renewed movie list of trending movies (we captured them by genre); the modeling dataset is also obtained from imdb.com, which requires the user to search for a specific movie and the search system will find out all the information on that movie and build a model based on the historical reviews to predict the rating score of a new one.
+        #### Development Process and Final Technology Stack
+        The search page will scrape an input movie on-site and return a plot of score trend, then train a machine-learning model to predict the user’s score of a movie based on the input review with the reviews of this user-selected movie from IMDB.
+        
+        #### Data Acquisition, Caching, ETL Processing, Database Design
+        * The movie data displayed on the main site and the results from the search engine are scraped from imdb.com via python library “cfscrape”; the analysis of web structure and components are implemented through python library “BeautifulSoup”. The captured data is stored in MongoDB after processing and cleaning.
+        * 
+        #### Describe the Database
+        Data are stored as pkl files in MongoDB,
+        #### Link to files:
+        [ETL_EDA.ipynb](https://github.com/YueWangpl/DATA1050_movie_rating_prediction_proj/blob/main/ETL_EDA.ipynb)  
+        [Enhancement](/search)
+        [Google Slides for Further Explanation](https://docs.google.com/presentation/d/14rVUIYy7192J5RJMqhZikAc6Cijk7UL-aJ43t2tpVcE/edit?usp=sharing )
 
+    '''),
+    html.Br()],style={'width': "50%","margin":"auto"}),
+    #     dcc.Link('Go to Search', href='/search'),
+    #     html.Br(),
+    #     dcc.Link('HOME', href='/')
+    html.Div([html.Footer(html.Div(dcc.Markdown('''[Go to Search](/search)    [Back to Home](/)
+    ''')))], style={'text-align': 'left'})])
 
 # Update the index
 @app.callback(dash.dependencies.Output('page-content', 'children'),
@@ -291,6 +354,8 @@ def update_review(n_clicks, value):
 def display_page(pathname):
     if pathname == '/search':
         return page_1_layout
+    elif pathname == '/about':
+        return page_2_layout
     else:
         return index_page
     # You could also return a 404 "URL not found" page here
