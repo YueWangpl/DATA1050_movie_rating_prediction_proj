@@ -331,13 +331,14 @@ page_2_layout = html.Div([
         The search page will scrape an input movie on-site and return a plot of score trend, then train a machine-learning model to predict the user’s score of a movie based on the input review with the reviews of this user-selected movie from IMDB.
         
         #### Data Acquisition, Caching, ETL Processing, Database Design
-        * The movie data displayed on the main site and the results from the search engine are scraped from imdb.com via python library “cfscrape”; the analysis of web structure and components are implemented through python library “BeautifulSoup”. The captured data is stored in MongoDB after processing and cleaning.
-        * 
-        #### Describe the Database
-        Data are stored as pkl files in MongoDB,
+        * The movie data displayed on the main site and the results from the search engine are scraped from [imdb.com](http://imdb.com/) via python library `cfscrape`; the analysis of web structure and components are implemented through python library `BeautifulSoup`. The captured data is stored in MongoDB after processing and cleaning.
+        * We use MongoDB on Atlas to store our data. Data are stored as `.pkl` files. Currently, we have *pop_movies.pkl* in our database representing scraped week-one movie data. Then we update our database by running database.py each week. Basically, we delete data from the previous week and update the database by inserting the upcoming week’s dataset into our database.  
+        Structure (Equivalent Schema) of NoSQL database on MongoDB:  
+        We have only one table called movie. The primary key is an id for each movie here and its type is serial. Besides, we have columns: movie_id(TEXT), title (TEXT), year (INT), content_rating (TEXT), length (INT), genres (TEXT), score (FLOAT), metascore (INT), vote_numbers (INT), gross (FLOAT), director (TEXT), actors (TEXT) and genre_overall (TEXT).
+
         #### Link to files:
         [ETL_EDA.ipynb](https://github.com/YueWangpl/DATA1050_movie_rating_prediction_proj/blob/main/ETL_EDA.ipynb)  
-        [Enhancement](/search)
+        [Enhancement](/search)  
         [Google Slides for Further Explanation](https://docs.google.com/presentation/d/14rVUIYy7192J5RJMqhZikAc6Cijk7UL-aJ43t2tpVcE/edit?usp=sharing )
 
     '''),
@@ -345,8 +346,12 @@ page_2_layout = html.Div([
     #     dcc.Link('Go to Search', href='/search'),
     #     html.Br(),
     #     dcc.Link('HOME', href='/')
-    html.Div([html.Footer(html.Div(dcc.Markdown('''[Go to Search](/search)    [Back to Home](/)
-    ''')))], style={'text-align': 'left'})])
+    html.Div(html.Footer([
+        html.Div(dcc.Link('Go to Search →', href='/search', style={'color': '#C0C0C0'}),style={'text-align': 'right'}),
+        html.Div(dcc.Link('← Back to Home', href='/', style={'color': '#C0C0C0'}), style={'text-align': 'left'}) 
+        
+        ]))
+    ])
 
 # Update the index
 @app.callback(dash.dependencies.Output('page-content', 'children'),
