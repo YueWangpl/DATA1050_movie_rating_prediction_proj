@@ -5,15 +5,18 @@ import dash_html_components as html
 import plotly.express as px
 import plotly.graph_objects as go
 from dash.dependencies import Input, Output
+import base64
+from wordcloud import WordCloud
+from io import BytesIO
 
 import pandas as pd
+import numpy as np
 import web_core
 from database import *
 from preprocessing import *
 from language_processing import *
 import xgboost as xgb
 from sklearn.model_selection import train_test_split
-import numpy as np
 
 
 model_collect = {'model': 0, 'inference': 0}
@@ -37,7 +40,6 @@ df1.columns=['id','title','year','content_rating','length','genres','score','met
 
 # drop columns
 df1.drop(['genres','metascore','actors'], axis=1, inplace=True)
-
 # Drop duplicated movies
 df1.title.drop_duplicates(inplace=True)
 # Drop movies with any NaN
@@ -48,7 +50,7 @@ df1 = df1.convert_dtypes()
 df1 = df1.astype({'length': 'int64','gross': 'float','score': 'float','year':'int32'})
 
 df2 = df1[~(df1['year'] < 2015)]
-
+wordcloud = 0
 
 
 app.layout = html.Div([
@@ -85,7 +87,7 @@ index_page = html.Div([
     dcc.Graph(id='movie_scatter', figure={})],style={'width': '75%', 'display': 'inline-block'}),
     html.Div( #smaller now moved up beside the first block
     [
-        html.I("To search a movie to view its score trend, and try our prediction model,"),
+        html.I("To search a movie to view its score trend, and try our prediction model,", style={'textAlign': 'left'}),
         html.Br(),
         dcc.Link(html.Button('Click Here'), href='/search', style={'textAlign': 'center'}),
         html.Br()],
@@ -227,7 +229,7 @@ page_1_layout = html.Div([
     html.Div(dcc.Input(id='input-on-submit', type='text', placeholder="Type a movie title here..."), style={'width': "50%","margin":"auto",'text-align': 'center'}),
     html.Br(),
     html.Button('Search!', id='submit-val', n_clicks=0),
-    dcc.Loading(id="loading", type="default",children="try", color='#708090'),
+    dcc.Loading(id="loading", type="default",children="try", color='#acafb5'),
     html.Div(id='search-content'),
     html.Br(),
     dcc.Link('HOME', href='/')
@@ -238,6 +240,7 @@ page_1_layout = html.Div([
     dash.dependencies.Output('loading', 'children'),
     [dash.dependencies.Input('submit-val', 'n_clicks')],
     [dash.dependencies.State('input-on-submit', 'value')])
+
 def update_output(n_clicks, value):
     if not value:
         return ""
@@ -247,6 +250,7 @@ def update_output(n_clicks, value):
             res = dict(zip(['movie_title', 'year', 'grade', 'length', 'genre', 'score', 'metascore', 'votes',
                             'gross', 'director', 'actor', 'related_movies', 'storyline'],
                            list(search_result.values())[0][0:13]))
+            res['year'] = ''.join([i for i in res['year'] if i.isdigit()])
             reviews = list(search_result.values())[0][13]  # Extracting the reviews
             scores = [int(x[0]) for x in reviews]  # Extracting the scores as training label
             text = [x[1] for x in reviews]
@@ -258,6 +262,19 @@ def update_output(n_clicks, value):
             model_collect['model'] = model
             model_collect['inference'] = pr
 
+            # Table 
+            res['related_movies'] = ",".join(res['related_movies'])
+            res['related_movies'] = res['related_movies'].replace(',',', \n ')
+  
+            tfig = go.Figure(data=[go.Table(columnwidth = [1.3,1,1,1,1,1,1,1.5,2,1.5,1.5,2,4],
+                                            header=dict(values=[i for i in res]),
+                 cells=dict(values=[i for i in res.values()]))
+                     ])
+            # Word cloud
+            review = ','.join(text)
+            wc = WordCloud(background_color="white").generate(review)
+            global wordcloud
+            wordcloud = wc.to_image()
             # Trend plot
             date = [x[2] for x in reviews]
 
@@ -274,17 +291,29 @@ def update_output(n_clicks, value):
             trend_fig.update_layout( height=800, title_text='Score Trend Over Time')
         else:
             return ""
+
+    
+    
     new_page_layout = html.Div([
-        html.H4('Movie Title: {}'.format(res['movie_title'])),
-        html.H4('Movie Released Year: {}'.format(res['year'])),
+        html.H5('Movie Title: {}'.format(res['movie_title'])),
+        html.H5('Movie Released Year: {}'.format(res['year'])),
+        html.Div(dcc.Graph(figure=tfig),style={'width': '60%', 'display': 'inline-block', 'margin':'auto'}),
+        html.Div([html.I("Wordcloud from reviews:", style={'textAlign': 'left'}),
+                  html.Br(),
+            html.Img(id="image_wc")],style={'width': '32%', 'display': 'inline-block', 'margin':'auto','textAlign': 'center'}),
         dcc.Graph(figure=trend_fig),
-        html.Div(dcc.Input(id='input-review', type='text')),
+        html.Div(dcc.Input(id='input-review', type='text'), style={'width': "50%","margin":"auto"}),
         html.Button('Predict!', id='submit-review', n_clicks=0),
         html.Div(id='review-button-basic',
                  children='Enter a review and predict the rating score.'),
         html.Br()])
     return new_page_layout
 
+@app.callback(Output('image_wc', 'src'), [Input('image_wc', 'id')])
+def make_image(b):
+    img = BytesIO()
+    wordcloud.save(img, format='PNG')
+    return 'data:image/png;base64,{}'.format(base64.b64encode(img.getvalue()).decode())
 
 @app.callback(
     dash.dependencies.Output('review-button-basic', 'children'),
@@ -333,16 +362,16 @@ page_2_layout = html.Div([
         #### Data Acquisition, Caching, ETL Processing, Database Design
         * The movie data displayed on the main site and the results from the search engine are scraped from [imdb.com](http://imdb.com/) via python library `cfscrape`; the analysis of web structure and components are implemented through python library `BeautifulSoup`. The captured data is stored in MongoDB after processing and cleaning.
         * We use MongoDB on Atlas to store our data. Data are stored as `.pkl` files. Currently, we have *pop_movies.pkl* in our database representing scraped week-one movie data. Then we update our database by running database.py each week. Basically, we delete data from the previous week and update the database by inserting the upcoming week’s dataset into our database.  
-        Structure (Equivalent Schema) of NoSQL database on MongoDB:  
+        Structure ([Equivalent Schema](https://raw.githubusercontent.com/mikelyy/DATA1050_movie_rating_prediction_proj/main/%20schema.png)) of NoSQL database on MongoDB:  
         We have only one table called movie. The primary key is an id for each movie here and its type is serial. Besides, we have columns: movie_id(TEXT), title (TEXT), year (INT), content_rating (TEXT), length (INT), genres (TEXT), score (FLOAT), metascore (INT), vote_numbers (INT), gross (FLOAT), director (TEXT), actors (TEXT) and genre_overall (TEXT).
 
-        #### Link to files:
+        #### Links to files:
         [ETL_EDA.ipynb](https://github.com/YueWangpl/DATA1050_movie_rating_prediction_proj/blob/main/ETL_EDA.ipynb)  
         [Enhancement](/search)  
         [Google Slides for Further Explanation](https://docs.google.com/presentation/d/14rVUIYy7192J5RJMqhZikAc6Cijk7UL-aJ43t2tpVcE/edit?usp=sharing )
 
     '''),
-    html.Br()],style={'width': "50%","margin":"auto"}),
+    html.Br()],style={'width': "62%","margin":"auto"}),
     #     dcc.Link('Go to Search', href='/search'),
     #     html.Br(),
     #     dcc.Link('HOME', href='/')
